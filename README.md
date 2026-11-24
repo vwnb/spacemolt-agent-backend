@@ -10,6 +10,8 @@ Vercel-deployable SpaceMolt backend with a chat-driven pilot agent. Existing pil
 - `POST /api/connect` - creates a new pilot from a registration code, then observes and returns `sessionId`
 - `POST /api/chat` - talks to the agent; safe actions execute immediately and write actions are returned as approval proposals
 - `POST /api/execute` - executes exact proposals after explicit pilot approval
+- `POST /api/action` - runs one registered safe action directly, for retries after an interrupted or failed turn
+- `POST /api/location` - returns live `get_location` transit state for progress displays
 - `POST /api/observe` - takes `Authorization: Bearer <spaceMoltLoginToken>` for clients that already mint tokens
 - No DB, no filesystem persistence, no UI, no cron
 
@@ -82,6 +84,8 @@ The action registry covers reads, navigation, economy, combat, battle tactics, a
 Safe actions include reads, routes, travel, dock/undock, mining, survey, refuel/repair, ordinary scans and dry-run craft/recycle quotes. Approval-gated actions include combat and hunting, self-destruct, battle tactics, arena matches, faction writes, mission writes, passenger writes, storage writes, gifts, trades, craft/recycle jobs, freight writes, chat, forum posts, notes and petitions. A cargo scan also requires approval.
 
 `POST /api/execute` takes `{ "sessionId": "...", "actions": [approved pending action objects] }` and executes only registered actions that require approval. It returns `{ ok, actions, error? }`. The UI lets the pilot revise chat/forum/petition text in a text box before approval; the edited text is then sent exactly as shown.
+
+`POST /api/action` takes `{ "sessionId": "...", "tool": "spacemolt", "action": "jump", "args": {...} }` and runs only safe actions; approval-gated actions are refused. `POST /api/location` takes `{ "sessionId": "..." }` and returns SpaceMolt's `get_location` payload, including `in_transit`, `transit_type`, destination and arrival tick while travelling. Both are read/trusted-session helpers for the UI's live progress and retry controls; they do not store jobs or history.
 
 ## Registration code contract
 
