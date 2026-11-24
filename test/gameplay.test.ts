@@ -48,6 +48,31 @@ describe("gameplay action registry", () => {
     expect(GAMEPLAY_SYSTEM_PROMPT).toContain("search_systems with args.text");
   });
 
+  it("supports self-service refuel and repair and gates player targets", async () => {
+    const { parseGameAction, requiresApproval, GAMEPLAY_SYSTEM_PROMPT } = await import("../src/agent/gameplay.js");
+
+    const selfRefuel = parseGameAction({ tool: "spacemolt", action: "refuel", args: {} });
+    const cargoRefuel = parseGameAction({ tool: "spacemolt", action: "refuel", args: { id: "fuel_cell", quantity: 2 } });
+    const fleetRefuel = parseGameAction({ tool: "spacemolt", action: "refuel", args: { target: "fleet" } });
+    const playerRefuel = parseGameAction({ tool: "spacemolt", action: "refuel", args: { target: "PilotName" } });
+    const selfRepair = parseGameAction({ tool: "spacemolt", action: "repair", args: {} });
+    const playerRepair = parseGameAction({ tool: "spacemolt", action: "repair", args: { target: "PilotName" } });
+
+    for (const parsed of [selfRefuel, cargoRefuel, fleetRefuel, playerRefuel, selfRepair, playerRepair]) {
+      expect(parsed.ok).toBe(true);
+    }
+    if (selfRefuel.ok) expect(requiresApproval(selfRefuel.action)).toBe(false);
+    if (cargoRefuel.ok) expect(requiresApproval(cargoRefuel.action)).toBe(false);
+    if (fleetRefuel.ok) expect(requiresApproval(fleetRefuel.action)).toBe(false);
+    if (playerRefuel.ok) expect(requiresApproval(playerRefuel.action)).toBe(true);
+    if (selfRepair.ok) expect(requiresApproval(selfRepair.action)).toBe(false);
+    if (playerRepair.ok) expect(requiresApproval(playerRepair.action)).toBe(true);
+
+    expect(parseGameAction({ tool: "spacemolt", action: "refuel", args: { quantity: 0 } }).ok).toBe(false);
+    expect(GAMEPLAY_SYSTEM_PROMPT).toContain("To refuel or repair yourself, omit target");
+    expect(GAMEPLAY_SYSTEM_PROMPT).toContain("refuel/repair transfers to other pilots require approval");
+  });
+
   it("routes chat sent with the default tool to the social tool", async () => {
     const { parseGameAction, requiresApproval } = await import("../src/agent/gameplay.js");
 

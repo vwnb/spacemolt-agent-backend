@@ -54,7 +54,7 @@ const helpArg = z.object({ topic: text.optional() }).strict();
 const refuelArg = z.object({
   id: text.optional(),
   quantity: posInt.optional(),
-  target: z.literal("fleet").optional(),
+  target: text.optional(),
 }).strict();
 const repairArg = refuelArg;
 const scanArg = z.object({ id: text, mode: z.literal("cargo").optional() }).strict();
@@ -418,8 +418,8 @@ export const ACTION_SPECS: Record<string, ActionSpec> = {
   "spacemolt/undock": spec(none, "none", "leave the station"),
   "spacemolt/mine": spec(none, "none", "extract resources at current POI"),
   "spacemolt/survey_system": spec(none, "none", "read ore at charted POIs and scan for hidden POIs"),
-  "spacemolt/refuel": spec(refuelArg, "id?, quantity?, target?", "refuel from station service or cargo fuel cells"),
-  "spacemolt/repair": spec(repairArg, "quantity?, id?, target?", "repair hull with kits or station service"),
+  "spacemolt/refuel": spec(refuelArg, "id?, quantity?, target?", "refuel yourself: empty args while docked, id/quantity for cargo fuel cells in space; target=fleet for status, target=player ID/username to transfer"),
+  "spacemolt/repair": spec(repairArg, "quantity?, id?, target?", "repair yourself: empty args at station, id/quantity for kits in space; target=fleet for status, target=player ID/username to repair"),
   "spacemolt/scan": spec(scanArg, "id, mode?", "scan a target; mode cargo scans a player's cargo"),
   "spacemolt/buy": spec(buyArg, "id, quantity, auto_list?, deliver_to?", "buy from station exchange"),
   "spacemolt/sell": spec(sellArg, "id, quantity, auto_list?", "sell to station exchange"),
@@ -669,6 +669,7 @@ export function requiresApproval(action: PendingAction): boolean {
   const key = `${action.tool}/${action.action}`;
   if ((key === "spacemolt/craft" || key === "spacemolt/recycle") && action.args.dry_run === true) return false;
   if (!SAFE_KEYS.has(key)) return true;
+  if ((key === "spacemolt/refuel" || key === "spacemolt/repair") && typeof action.args.target === "string" && action.args.target !== "fleet") return true;
   if (key === "spacemolt/scan" && action.args.mode === "cargo") return true;
   return false;
 }
@@ -888,7 +889,8 @@ export const GAMEPLAY_SYSTEM_PROMPT = [
   "Always ground decisions in server-provided game state and tool results. Never invent item, POI, system, player, shipment or recipe IDs.",
   "Use the server-provided in-game skills (levels and XP) to judge what the pilot can do; never invent a skill level or unlock.",
   "The backend decides which actions require approval; omit approval from your output. Write actions are returned as pending_actions for pilot approval.",
-  "Chat, forum, petition, gift, trade, combat, faction, mission, passenger, crafting and shipping write actions require approval. Never claim they were executed before approval.",
+  "Chat, forum, petition, gift, trade, combat, faction, mission, passenger, crafting, shipping and refuel/repair transfers to other pilots require approval. Never claim they were executed before approval.",
+  "To refuel or repair yourself, omit target: an empty object uses the docked station service; in space set id to a fuel cell or repair kit from cargo with optional quantity. target='fleet' is read-only fuel/hull status, not a fleet-wide action; a player target transfers fuel or kits.",
   "For text actions, put the exact draft in args.content (or args.title/description where applicable). The UI shows an editable text box; after approval, send the pilot's edited text unchanged.",
   "Set done=true when no more actions are needed this turn. Safe actions execute immediately; proposals appear in pending_actions.",
   "To find a named place or system, use search_systems with args.text, then use get_map with args.system_id or find_route with args.id only on IDs the tools returned. get_map is for map context; it does not search by name.",
