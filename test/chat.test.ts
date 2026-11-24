@@ -163,6 +163,33 @@ describe("chatWithAgent", () => {
     });
   });
 
+  it("puts active missions ahead of the personal objective", async () => {
+    decideMock.mockResolvedValueOnce({ reply: "Ready.", actions: [], done: true });
+    postMock.mockResolvedValueOnce({
+      structuredContent: {
+        credits: 1,
+        missions: { active: [{ id: "m1", objective: "Deliver ore to Sol Central" }] },
+      },
+    });
+
+    const { chatWithAgent } = await import("../src/agent/chat.js");
+    await chatWithAgent({
+      sessionId: "s1",
+      message: "what next",
+      objective: "Save credits for a hauler",
+      history: [],
+    });
+
+    const opts = decideMock.mock.calls[0][0];
+    const messages = opts.messages as Array<{ role: string; content: string }>;
+    const missionIndex = messages.findIndex((message) => String(message.content).includes("Deliver ore to Sol Central"));
+    const objectiveIndex = messages.findIndex((message) => String(message.content).includes("Save credits for a hauler"));
+    expect(missionIndex).toBeGreaterThanOrEqual(0);
+    expect(objectiveIndex).toBeGreaterThanOrEqual(0);
+    expect(missionIndex).toBeLessThan(objectiveIndex);
+    expect(opts.system).toContain("Active missions from server state outrank");
+  });
+
   it("proposes combat actions instead of executing them", async () => {
     decideMock.mockResolvedValueOnce({
       reply: "I can attack that pirate once you approve it.",

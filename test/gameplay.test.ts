@@ -32,6 +32,22 @@ describe("gameplay action registry", () => {
     expect(invalid.ok).toBe(false);
   });
 
+  it("exposes map and system search as safe read actions", async () => {
+    const { parseGameAction, requiresApproval, GAMEPLAY_SYSTEM_PROMPT } = await import("../src/agent/gameplay.js");
+
+    const map = parseGameAction({ tool: "spacemolt", action: "get_map", args: { system_id: "sol" } });
+    const search = parseGameAction({ tool: "spacemolt", action: "search_systems", args: { text: "Tau" } });
+    expect(map.ok).toBe(true);
+    expect(search.ok).toBe(true);
+    if (map.ok) expect(requiresApproval(map.action)).toBe(false);
+    if (search.ok) expect(requiresApproval(search.action)).toBe(false);
+
+    expect(parseGameAction({ tool: "spacemolt", action: "search_systems", args: { id: "Tau" } }).ok).toBe(false);
+    expect(GAMEPLAY_SYSTEM_PROMPT).toContain('"action":"get_map"');
+    expect(GAMEPLAY_SYSTEM_PROMPT).toContain('"action":"search_systems"');
+    expect(GAMEPLAY_SYSTEM_PROMPT).toContain("search_systems with args.text");
+  });
+
   it("routes chat sent with the default tool to the social tool", async () => {
     const { parseGameAction, requiresApproval } = await import("../src/agent/gameplay.js");
 
@@ -161,6 +177,23 @@ describe("gameplay action registry", () => {
       estimatedFuel: 12,
       fuelAvailable: 85,
     });
+  });
+
+  it("extracts active missions without available mission noise", async () => {
+    const { activeMissionsText } = await import("../src/agent/gameplay.js");
+
+    const text = activeMissionsText({
+      missions: {
+        active: [{ id: "m1", objective: "Deliver ore" }],
+        available: [{ id: "n1", objective: "Hunt pirates" }],
+      },
+    });
+
+    expect(text).toContain("m1");
+    expect(text).toContain("Deliver ore");
+    expect(text).not.toContain("n1");
+    expect(activeMissionsText({ missions: { active: [], available: [{ id: "n1" }] } })).toBeUndefined();
+    expect(activeMissionsText({ active_missions: [{ id: "m2" }] })).toContain("m2");
   });
 
   it("keeps the structured payload on executed actions", async () => {

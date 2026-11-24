@@ -5,6 +5,7 @@ import { isAllowedModel, type LLMProviderKey } from "../reasoning/models.js";
 import type { AgentDecision } from "../reasoning/types.js";
 import { SpaceMoltClient } from "../spacemolt/client.js";
 import {
+  activeMissionsText,
   compact,
   executeGameAction,
   GAMEPLAY_SYSTEM_PROMPT,
@@ -69,12 +70,14 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
   let pilot: string | undefined;
   let stateText = "Game state unavailable.";
   let skillsText = "In-game skills unavailable.";
+  let missionsText: string | undefined;
   try {
     const status = await client.post("spacemolt", "get_status", {}, input.sessionId);
     const content = status.structuredContent ?? status.result ?? status;
     hasStatus = true;
     pilot = pilotFrom(status.structuredContent);
     stateText = `Server-provided game state:\n${compact(content)}`;
+    missionsText = activeMissionsText(content);
     const skills = content && typeof content === "object" && !Array.isArray(content)
       ? (content as Record<string, unknown>).skills
       : undefined;
@@ -110,6 +113,7 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
       system: GAMEPLAY_SYSTEM_PROMPT,
       messages: [
         ...input.history.slice(-12),
+        ...(missionsText ? [{ role: "user" as const, content: missionsText }] : []),
         { role: "user", content: objectiveText },
         { role: "user", content: stateText },
         { role: "user", content: skillsText },
@@ -164,6 +168,7 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
         system: FOLLOWUP_SYSTEM_PROMPT,
         messages: [
           ...input.history.slice(-12),
+          ...(missionsText ? [{ role: "user" as const, content: missionsText }] : []),
           { role: "user", content: objectiveText },
           { role: "user", content: `Pilot request: ${input.message}` },
           { role: "assistant", content: decision.reply },

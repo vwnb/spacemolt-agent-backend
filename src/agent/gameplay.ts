@@ -40,6 +40,7 @@ function spec(schema: z.ZodTypeAny, argsText: string, use: string): ActionSpec {
 
 const shipArg = z.object({ id: text.optional() }).strict();
 const mapArg = z.object({ system_id: text.optional() }).strict();
+const searchSystemsArg = z.object({ text: text }).strict();
 const guideArg = z.object({
   id: z.enum(["miner", "trader", "pirate-hunter", "boarding", "explorer", "base-builder", "drones", "fuel", "crafting"]).optional(),
 }).strict();
@@ -399,6 +400,7 @@ export const ACTION_SPECS: Record<string, ActionSpec> = {
   "spacemolt/get_notifications": spec(notificationsArg, "clear?, limit?, types?", "pending notifications"),
   "spacemolt/get_queue": spec(none, "none", "pending action"),
   "spacemolt/get_map": spec(mapArg, "system_id?", "galaxy map, optionally for one system"),
+  "spacemolt/search_systems": spec(searchSystemsArg, "text", "find systems by name"),
   "spacemolt/get_missions": spec(none, "none", "missions offered at current base"),
   "spacemolt/get_active_missions": spec(none, "none", "active mission progress"),
   "spacemolt/completed_missions": spec(none, "none", "all completed missions"),
@@ -606,6 +608,7 @@ const SAFE_KEYS = new Set([
   "spacemolt/get_notifications",
   "spacemolt/get_queue",
   "spacemolt/get_map",
+  "spacemolt/search_systems",
   "spacemolt/get_missions",
   "spacemolt/get_active_missions",
   "spacemolt/completed_missions",
@@ -708,6 +711,35 @@ export type RoutePlan = {
 export function compact(value: unknown, max = 12000): string {
   const text = typeof value === "string" ? value : JSON.stringify(value) ?? "";
   return text.length > max ? `${text.slice(0, max)}… [truncated]` : text;
+}
+
+function hasMissionContent(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return false;
+}
+
+export function activeMissionsText(statusContent: unknown): string | undefined {
+  if (!statusContent || typeof statusContent !== "object" || Array.isArray(statusContent)) return undefined;
+  const content = statusContent as Record<string, unknown>;
+  const candidates = [content.active_missions, content.activeMissions];
+  const found = candidates.find(hasMissionContent);
+  if (found !== undefined) return `Server-provided active missions (work these first unless the pilot asks otherwise):\n${compact(found, 6000)}`;
+
+  const missions = content.missions;
+  if (missions && typeof missions === "object" && !Array.isArray(missions)) {
+    const record = missions as Record<string, unknown>;
+    const nested = ["active", "active_missions", "activeMissions"].map((key) => record[key]).find(hasMissionContent);
+    return nested === undefined
+      ? undefined
+      : `Server-provided active missions (work these first unless the pilot asks otherwise):\n${compact(nested, 6000)}`;
+  }
+
+  return hasMissionContent(missions)
+    ? `Server-provided active missions (work these first unless the pilot asks otherwise):\n${compact(missions, 6000)}`
+    : undefined;
 }
 
 function jsonSafe(value: unknown): unknown {
@@ -850,7 +882,7 @@ export async function executeApprovedActions(
 export const GAMEPLAY_SYSTEM_PROMPT = [
   "You are the pilot's SpaceMolt copilot, connected to a live pilot session.",
   "You can read game state and propose actions. The backend executes only the listed tools.",
-  "Focus on completing active missions and the pilot's personal objective set in the UI; use mining/trade loops only when they serve that goal. After each meaningful batch, tell the pilot what changed and stop; do not loop on checks that return nothing new.",
+  "Active missions from server state outrank the optional personal objective set in the UI. Work on them first; use mining/trade loops only when they serve that active work. If the pilot's latest request explicitly asks for something else, follow that request. After each meaningful batch, tell the pilot what changed and stop; do not loop on checks that return nothing new.",
   "Use only the exact tool, action and argument names shown. Extra fields are rejected before anything is sent to SpaceMolt. For actions whose args are listed as none, use an empty object.",
   "The tool field defaults to spacemolt; include it explicitly for every other tool. Chat always uses tool spacemolt_social, never spacemolt.",
   "Always ground decisions in server-provided game state and tool results. Never invent item, POI, system, player, shipment or recipe IDs.",
@@ -859,6 +891,7 @@ export const GAMEPLAY_SYSTEM_PROMPT = [
   "Chat, forum, petition, gift, trade, combat, faction, mission, passenger, crafting and shipping write actions require approval. Never claim they were executed before approval.",
   "For text actions, put the exact draft in args.content (or args.title/description where applicable). The UI shows an editable text box; after approval, send the pilot's edited text unchanged.",
   "Set done=true when no more actions are needed this turn. Safe actions execute immediately; proposals appear in pending_actions.",
+  "To find a named place or system, use search_systems with args.text, then use get_map with args.system_id or find_route with args.id only on IDs the tools returned. get_map is for map context; it does not search by name.",
   "For a multi-jump trip, call find_route once. The UI can follow the returned route step by step in the background; do not spam jump calls in one turn.",
   "Return strict JSON with keys: reply(string), actions(array of at most 4 {tool?, action, args, reason?}), done(boolean). args must be a JSON object, never a JSON-encoded string; do not wrap the whole reply in a string.",
   `Available tools: ${JSON.stringify(TOOL_LIST)}`,
