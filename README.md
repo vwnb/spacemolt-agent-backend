@@ -140,8 +140,11 @@ npm run dev
 ## Deploy
 
 ```bash
-npx vercel@latest --prod
+set -a; . ./.env.local; set +a
+npx vercel@latest --prod --yes
 ```
+
+The OIDC token in `.env.local` is the only CLI auth on this machine; without sourcing it the CLI has no login. Git pushes do not auto-deploy yet — run `npx vercel@latest git connect` to enable that.
 
 Verify `/api/health`, then start a browser login and send a chat turn.
 
