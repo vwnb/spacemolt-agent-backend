@@ -88,4 +88,32 @@ describe("POST /api/location", () => {
     expect(postMock).toHaveBeenCalledWith("spacemolt", "get_location", {}, "s1");
     expect(res.body.location.system).toBe("Sol");
   });
+
+  it("unwraps the nested location from the full state envelope", async () => {
+    postMock.mockReset();
+    postMock.mockResolvedValue({
+      structuredContent: {
+        player: { username: "Eunseo Moon" },
+        location: {
+          system_id: "alpha_centauri",
+          in_transit: true,
+          transit_type: "jump",
+          transit_dest_system_name: "Tau Ceti",
+        },
+      },
+    });
+    const handler = (await import("../api/location.js")).default;
+    const req: any = { method: "POST", headers: {}, body: { sessionId: "s1" } };
+    const res = makeRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.location).toEqual({
+      system_id: "alpha_centauri",
+      in_transit: true,
+      transit_type: "jump",
+      transit_dest_system_name: "Tau Ceti",
+    });
+  });
 });

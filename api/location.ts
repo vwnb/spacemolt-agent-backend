@@ -35,10 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
     const response = await client.post("spacemolt", "get_location", {}, parsed.data.sessionId);
-    res.status(200).json({
-      ok: true,
-      location: response.structuredContent ?? response.result ?? response,
-    });
+    const payload = response.structuredContent ?? response.result ?? response;
+    const nested = payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>).location
+      : undefined;
+    const location = nested && typeof nested === "object" && !Array.isArray(nested) ? nested : payload;
+    res.status(200).json({ ok: true, location });
   } catch (err) {
     const { message, status } = connectFailureMessage(err);
     res.status(status).json({ ok: false, error: message });

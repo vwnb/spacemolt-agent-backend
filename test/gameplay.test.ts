@@ -126,4 +126,52 @@ describe("gameplay action registry", () => {
       ["spacemolt", "hunt", { id: "species-1" }, "s1"],
     ]);
   });
+
+  it("normalizes a find_route response into followable steps", async () => {
+    const { parseRoutePlan } = await import("../src/agent/gameplay.js");
+
+    const plan = parseRoutePlan({
+      found: true,
+      route: [
+        { system_id: "sol", name: "Sol", jumps: 0 },
+        { system_id: "alpha", name: "Alpha Centauri", jumps: 1 },
+        { system_id: "tau", name: "Tau Ceti", jumps: 2 },
+      ],
+      total_jumps: 2,
+      target_system: "tau",
+      target_poi: "tau_belt",
+      target_poi_name: "Tau Ceti Belt",
+      message: "Route found.",
+      estimated_fuel: 12,
+      fuel_available: 85,
+    }, "tau_belt");
+
+    expect(plan).toEqual({
+      destination: "tau_belt",
+      steps: [
+        { systemId: "alpha", name: "Alpha Centauri", jumps: 1 },
+        { systemId: "tau", name: "Tau Ceti", jumps: 2 },
+        { systemId: "tau_belt", name: "Tau Ceti Belt", jumps: 2, kind: "travel" },
+      ],
+      totalJumps: 2,
+      targetSystem: "tau",
+      targetPoi: "tau_belt",
+      targetPoiName: "Tau Ceti Belt",
+      message: "Route found.",
+      estimatedFuel: 12,
+      fuelAvailable: 85,
+    });
+  });
+
+  it("keeps the structured payload on executed actions", async () => {
+    const { SpaceMoltClient } = await import("../src/spacemolt/client.js");
+    const { executeGameAction } = await import("../src/agent/gameplay.js");
+    const client = new SpaceMoltClient("https://game.example") as any;
+    postMock.mockResolvedValueOnce({ structuredContent: { found: true, route: [] } });
+
+    const result = await executeGameAction(client, "s1", { action: "find_route", args: { id: "tau" } });
+
+    expect(result.ok).toBe(true);
+    expect(result.structured).toEqual({ found: true, route: [] });
+  });
 });

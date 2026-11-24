@@ -687,12 +687,89 @@ export type GameActionRecord = {
   args: Record<string, unknown>;
   ok: boolean;
   result?: string;
+  structured?: unknown;
   error?: string;
+};
+
+export type RouteStep = { systemId: string; name?: string; jumps: number; kind?: "jump" | "travel" };
+
+export type RoutePlan = {
+  destination: string;
+  steps: RouteStep[];
+  totalJumps: number;
+  targetSystem?: string;
+  targetPoi?: string;
+  targetPoiName?: string;
+  message?: string;
+  estimatedFuel?: number;
+  fuelAvailable?: number;
 };
 
 export function compact(value: unknown, max = 12000): string {
   const text = typeof value === "string" ? value : JSON.stringify(value) ?? "";
   return text.length > max ? `${text.slice(0, max)}… [truncated]` : text;
+}
+
+function jsonSafe(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value ?? null)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function textOrUndefined(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+export function parseRoutePlan(value: unknown, destination: string): RoutePlan | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as Record<string, unknown>;
+  if (payload.found === false) return null;
+  if (!Array.isArray(payload.route)) return null;
+
+  const steps: RouteStep[] = [];
+  for (const raw of payload.route) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const step = raw as Record<string, unknown>;
+    const systemId = textOrUndefined(step.system_id);
+    const jumps = numberOrUndefined(step.jumps);
+    if (!systemId || jumps === undefined || jumps <= 0) continue;
+    steps.push({
+      systemId,
+      name: textOrUndefined(step.name),
+      jumps,
+    });
+  }
+  if (steps.length === 0) return null;
+  steps.sort((left, right) => left.jumps - right.jumps);
+
+  const totalJumps = numberOrUndefined(payload.total_jumps) ?? steps.length;
+  const targetPoi = textOrUndefined(payload.target_poi);
+  if (targetPoi) {
+    steps.push({
+      systemId: targetPoi,
+      name: textOrUndefined(payload.target_poi_name) ?? targetPoi,
+      jumps: totalJumps,
+      kind: "travel",
+    });
+  }
+
+  return {
+    destination,
+    steps,
+    totalJumps,
+    targetSystem: textOrUndefined(payload.target_system),
+    targetPoi,
+    targetPoiName: textOrUndefined(payload.target_poi_name),
+    message: textOrUndefined(payload.message),
+    estimatedFuel: numberOrUndefined(payload.estimated_fuel),
+    fuelAvailable: numberOrUndefined(payload.fuel_available),
+  };
 }
 
 export function invalidGameActionRecord(raw: unknown, error: string): GameActionRecord {
@@ -723,12 +800,14 @@ export async function executeGameAction(
       parsed.action.args,
       sessionId,
     );
+    const payload = response.structuredContent ?? response.result ?? response;
     return {
       tool: parsed.action.tool,
       action: parsed.action.action,
       args: parsed.action.args,
       ok: true,
-      result: compact(response.structuredContent ?? response.result ?? response),
+      result: compact(payload),
+      structured: jsonSafe(payload),
     };
   } catch (err) {
     return {
@@ -775,10 +854,12 @@ export const GAMEPLAY_SYSTEM_PROMPT = [
   "Use only the exact tool, action and argument names shown. Extra fields are rejected before anything is sent to SpaceMolt. For actions whose args are listed as none, use an empty object.",
   "The tool field defaults to spacemolt; include it explicitly for every other tool. Chat always uses tool spacemolt_social, never spacemolt.",
   "Always ground decisions in server-provided game state and tool results. Never invent item, POI, system, player, shipment or recipe IDs.",
+  "Use the server-provided in-game skills (levels and XP) to judge what the pilot can do; never invent a skill level or unlock.",
   "The backend decides which actions require approval; omit approval from your output. Write actions are returned as pending_actions for pilot approval.",
   "Chat, forum, petition, gift, trade, combat, faction, mission, passenger, crafting and shipping write actions require approval. Never claim they were executed before approval.",
   "For text actions, put the exact draft in args.content (or args.title/description where applicable). The UI shows an editable text box; after approval, send the pilot's edited text unchanged.",
   "Set done=true when no more actions are needed this turn. Safe actions execute immediately; proposals appear in pending_actions.",
+  "For a multi-jump trip, call find_route once. The UI can follow the returned route step by step in the background; do not spam jump calls in one turn.",
   "Return strict JSON with keys: reply(string), actions(array of at most 4 {tool?, action, args, reason?}), done(boolean). args must be a JSON object, never a JSON-encoded string; do not wrap the whole reply in a string.",
   `Available tools: ${JSON.stringify(TOOL_LIST)}`,
 ].join(" ");

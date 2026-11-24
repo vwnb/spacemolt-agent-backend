@@ -75,9 +75,9 @@ It prefetches `get_status`, sends the conversation and game state to the LLM, an
 }
 ```
 
-The backend accepts at most four registered actions per turn. Safe actions execute immediately; approval-gated actions are returned unchanged in `pending_actions` and are not sent to SpaceMolt. The response is `{ ok, reply, actions, pending_actions, context, error? }`.
+The backend accepts at most four registered actions per turn. Safe actions execute immediately; approval-gated actions are returned unchanged in `pending_actions` and are not sent to SpaceMolt. The response is `{ ok, reply, actions, pending_actions, routes, context, error? }`; `context.hasSkills` reports that in-game skill levels were included in the prompt, and each executed action record can include a `structured` SpaceMolt payload.
 
-The agent prioritizes active missions and the pilot's UI-defined personal objective, using the basic undock -> travel -> mine -> dock -> sell -> refuel loop only when it serves that goal. It reports what changed after each meaningful batch instead of looping on checks that return nothing new. It grounds IDs in `get_status` / `get_system` / `get_poi` and never invents them.
+The agent prioritizes active missions and the pilot's UI-defined personal objective, using the basic undock -> travel -> mine -> dock -> sell -> refuel loop only when it serves that goal. It reports what changed after each meaningful batch instead of looping on checks that return nothing new. It grounds IDs in `get_status` / `get_system` / `get_poi` and never invents them. It uses the in-game skill levels from `get_status` to judge what the pilot can do, and never invents a skill or unlock. For a multi-jump trip it calls `find_route` once; the successful result is normalized into `routes[].steps` so the UI can follow the route jump by jump, with a final travel step for a target POI/base, without a subagent or a server-side loop.
 
 The action registry covers reads, navigation, economy, combat, battle tactics, arena, factions, faction missions, passenger routes, storage, gifts, crafting, recycling, freight contracts, social chat, forum posts, notes, petitions and settings. Argument names and types come from the official v2 OpenAPI request schemas (`https://www.spacemolt.com/api/v2/openapi.json`); each registry action's field names were checked against its POST request schema in both directions, and unknown fields are rejected before any SpaceMolt call.
 
@@ -85,7 +85,7 @@ Safe actions include reads, routes, travel, dock/undock, mining, survey, refuel/
 
 `POST /api/execute` takes `{ "sessionId": "...", "actions": [approved pending action objects] }` and executes only registered actions that require approval. It returns `{ ok, actions, error? }`. The UI lets the pilot revise chat/forum/petition text in a text box before approval; the edited text is then sent exactly as shown.
 
-`POST /api/action` takes `{ "sessionId": "...", "tool": "spacemolt", "action": "jump", "args": {...} }` and runs only safe actions; approval-gated actions are refused. `POST /api/location` takes `{ "sessionId": "..." }` and returns SpaceMolt's `get_location` payload, including `in_transit`, `transit_type`, destination and arrival tick while travelling. Both are read/trusted-session helpers for the UI's live progress and retry controls; they do not store jobs or history.
+`POST /api/action` takes `{ "sessionId": "...", "tool": "spacemolt", "action": "jump", "args": {...} }` and runs only safe actions; approval-gated actions are refused. It returns the action record with both a compact `result` and a `structured` payload, so the UI can consume `find_route` steps directly. `POST /api/location` takes `{ "sessionId": "..." }` and returns the nested `get_location` state, including `in_transit`, `transit_type`, destination and arrival tick while travelling. Both are read/trusted-session helpers for the UI's live progress, route following and retry controls; they do not store jobs or history.
 
 ## Registration code contract
 

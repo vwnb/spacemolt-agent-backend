@@ -10,9 +10,11 @@ import {
   GAMEPLAY_SYSTEM_PROMPT,
   invalidGameActionRecord,
   parseGameAction,
+  parseRoutePlan,
   requiresApproval,
   type GameActionRecord,
   type PendingAction,
+  type RoutePlan,
 } from "./gameplay.js";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -40,7 +42,8 @@ export type ChatResult = {
   reply: string;
   actions: GameActionRecord[];
   pending_actions: PendingActionRecord[];
-  context: { hasStatus: boolean; pilot?: string };
+  routes: RoutePlan[];
+  context: { hasStatus: boolean; hasSkills: boolean; pilot?: string };
   error?: string;
 };
 
@@ -62,14 +65,23 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
   const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
 
   let hasStatus = false;
+  let hasSkills = false;
   let pilot: string | undefined;
   let stateText = "Game state unavailable.";
+  let skillsText = "In-game skills unavailable.";
   try {
     const status = await client.post("spacemolt", "get_status", {}, input.sessionId);
     const content = status.structuredContent ?? status.result ?? status;
     hasStatus = true;
     pilot = pilotFrom(status.structuredContent);
     stateText = `Server-provided game state:\n${compact(content)}`;
+    const skills = content && typeof content === "object" && !Array.isArray(content)
+      ? (content as Record<string, unknown>).skills
+      : undefined;
+    if (skills !== undefined && skills !== null) {
+      hasSkills = true;
+      skillsText = `Server-provided in-game skills:\n${compact(skills)}`;
+    }
   } catch (err) {
     stateText = `Game state unavailable: ${err instanceof Error ? err.message : String(err)}`;
   }
@@ -100,6 +112,7 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
         ...input.history.slice(-12),
         { role: "user", content: objectiveText },
         { role: "user", content: stateText },
+        { role: "user", content: skillsText },
         { role: "user", content: input.message },
       ],
     });
@@ -111,7 +124,8 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
       reply: "I could not reach the reasoning model, so I did not take any game action.",
       actions: [],
       pending_actions: [],
-      context: { hasStatus, pilot },
+      routes: [],
+      context: { hasStatus, hasSkills, pilot },
       error: message,
     };
   }
@@ -135,8 +149,16 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
     actions.push(await executeGameAction(client, input.sessionId, parsed.action));
   }
 
+  const routes: RoutePlan[] = [];
+  for (const action of actions) {
+    if (action.tool !== "spacemolt" || action.action !== "find_route" || !action.ok) continue;
+    const destination = typeof action.args.id === "string" ? action.args.id : "";
+    const plan = parseRoutePlan(action.structured, destination);
+    if (plan) routes.push(plan);
+  }
+
   let reply = decision.reply;
-  if (actions.length > 0 || pending_actions.length > 0) {
+  if (actions.length > 0 || pending_actions.length > 0 || routes.length > 0) {
     try {
       const followUp = await reasoning.decide({
         system: FOLLOWUP_SYSTEM_PROMPT,
@@ -147,7 +169,18 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
           { role: "assistant", content: decision.reply },
           {
             role: "user",
-            content: `SpaceMolt results:\n${compact({ actions, pending_actions }, 12000)}\nWrite the follow-up now.`,
+            content: `SpaceMolt results:\n${compact({
+              actions: actions.map((action) => ({
+                tool: action.tool,
+                action: action.action,
+                args: action.args,
+                ok: action.ok,
+                result: action.result,
+                error: action.error,
+              })),
+              pending_actions,
+              routes,
+            }, 12000)}\nWrite the follow-up now.`,
           },
         ],
       });
@@ -164,7 +197,8 @@ export async function chatWithAgent(input: ChatInput): Promise<ChatResult> {
     reply,
     actions,
     pending_actions,
-    context: { hasStatus, pilot },
+    routes,
+    context: { hasStatus, hasSkills, pilot },
     error: failed.length > 0 ? `${failed.length} action(s) failed. See action results.` : undefined,
   };
 }

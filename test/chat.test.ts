@@ -212,6 +212,48 @@ describe("chatWithAgent", () => {
     expect(postMock).toHaveBeenCalledTimes(1);
   });
 
+  it("exposes in-game skills and a normalized route to the UI", async () => {
+    decideMock.mockResolvedValueOnce({
+      reply: "Route found to Tau Ceti.",
+      actions: [{ action: "find_route", args: { id: "tau_belt" } }],
+      done: true,
+    });
+    postMock
+      .mockResolvedValueOnce({
+        structuredContent: {
+          player: { username: "Eunseo Moon" },
+          skills: { mining: { level: 4, xp: 120 } },
+        },
+      })
+      .mockResolvedValueOnce({
+        structuredContent: {
+          found: true,
+          route: [
+            { system_id: "sol", name: "Sol", jumps: 0 },
+            { system_id: "alpha", name: "Alpha Centauri", jumps: 1 },
+            { system_id: "tau", name: "Tau Ceti", jumps: 2 },
+          ],
+          total_jumps: 2,
+          target_system: "tau",
+          target_poi: "tau_belt",
+          target_poi_name: "Tau Ceti Belt",
+        },
+      });
+
+    const { chatWithAgent } = await import("../src/agent/chat.js");
+    const result = await chatWithAgent({
+      sessionId: "s1",
+      message: "take me to the Tau belt",
+      history: [],
+    });
+
+    expect(result.context.hasSkills).toBe(true);
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0].steps.map((step) => step.systemId)).toEqual(["alpha", "tau", "tau_belt"]);
+    const decisionMessages = decideMock.mock.calls[0][0].messages;
+    expect(decisionMessages.some((message: any) => String(message.content).includes('"mining"'))).toBe(true);
+  });
+
   it("follows up with the failed get_system result instead of stopping at the preamble", async () => {
     decideMock
       .mockResolvedValueOnce({
