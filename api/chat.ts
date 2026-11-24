@@ -19,7 +19,7 @@ const inputSchema = z.object({
         content: z.string().min(1).max(4000),
       }),
     )
-    .max(20)
+    .transform((history) => history.slice(-20))
     .default([]),
 }).strict();
 

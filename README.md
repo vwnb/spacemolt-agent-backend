@@ -155,5 +155,5 @@ Verify `/api/health`, then start a browser login and send a chat turn.
 - A session ID can act as that pilot: use TLS, never log it, never persist it.
 - The LLM can only call registered actions with strict documented args; invalid actions are reported and not sent to SpaceMolt.
 - Approval-gated actions are not sent by `/api/chat`; they require `/api/execute` with the exact approved proposal.
-- Ephemeral, stateless runtime; conversation history is supplied by the client each turn, capped at 20 messages.
+- Ephemeral, stateless runtime; conversation history is supplied by the client each turn, capped at the 20 most recent messages (older ones are dropped, not rejected).
 - DM/PSA gates: private, local, system and faction messages are proposed exactly and sent only after explicit approval.
