@@ -6,6 +6,9 @@ import { getConfig } from "../src/config/env.js";
 import { corsHeaders } from "../src/http/cors.js";
 import { SpaceMoltClient } from "../src/spacemolt/client.js";
 
+const MOVEMENT_ACTIONS = new Set(["spacemolt/jump", "spacemolt/travel"]);
+const DEFERRED_RESPONSE_MS = 45_000;
+
 const inputSchema = z.object({
   sessionId: z.string().min(1).max(512),
   tool: z.string().min(1).max(80).default("spacemolt"),
@@ -53,6 +56,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
+    const actionKey = `${action.action.tool}/${action.action.action}`;
+    if (MOVEMENT_ACTIONS.has(actionKey)) {
+      let responded = false;
+      const execution = executeGameAction(client, parsed.data.sessionId, action.action)
+        .then((result: GameActionRecord) => {
+          if (responded) return;
+          responded = true;
+          res.status(result.ok ? 200 : 502).json({ ok: result.ok, action: result, error: result.error });
+        })
+        .catch((err: unknown) => {
+          if (responded) return;
+          responded = true;
+          const failure = connectFailureMessage(err);
+          res.status(failure.status).json({ ok: false, error: failure.message });
+        });
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deferred = new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          if (responded) {
+            resolve();
+            return;
+          }
+          responded = true;
+          const pending: GameActionRecord = {
+            tool: action.action.tool,
+            action: action.action.action,
+            args: action.action.args,
+            ok: true,
+            result: "Movement submitted; still in progress.",
+          };
+          res.status(202).json({ ok: true, pending: true, action: pending });
+          resolve();
+        }, DEFERRED_RESPONSE_MS);
+      });
+
+      await Promise.race([execution, deferred]);
+      if (timer !== undefined) clearTimeout(timer);
+      return;
+    }
+
     const result: GameActionRecord = await executeGameAction(client, parsed.data.sessionId, action.action);
     res.status(result.ok ? 200 : 502).json({ ok: result.ok, action: result, error: result.error });
   } catch (err) {

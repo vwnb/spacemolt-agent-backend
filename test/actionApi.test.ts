@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { postMock } = vi.hoisted(() => ({ postMock: vi.fn() }));
 
@@ -39,6 +39,10 @@ describe("POST /api/action", () => {
     postMock.mockResolvedValue({ structuredContent: { in_transit: true, transit_type: "jump" } });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("runs a safe jump action directly", async () => {
     const handler = (await import("../api/action.js")).default;
     const req: any = {
@@ -53,6 +57,27 @@ describe("POST /api/action", () => {
     expect(res.statusCode).toBe(200);
     expect(postMock).toHaveBeenCalledWith("spacemolt", "jump", { id: "sys2" }, "s1");
     expect(res.body.action.ok).toBe(true);
+  });
+
+  it("returns pending instead of blocking on a long jump", async () => {
+    vi.useFakeTimers();
+    postMock.mockImplementation(() => new Promise(() => {}));
+    const handler = (await import("../api/action.js")).default;
+    const req: any = {
+      method: "POST",
+      headers: {},
+      body: { sessionId: "s1", tool: "spacemolt", action: "jump", args: { id: "sys2" } },
+    };
+    const res = makeRes();
+
+    const pending = handler(req, res);
+    await vi.advanceTimersByTimeAsync(45_000);
+    await pending;
+
+    expect(res.statusCode).toBe(202);
+    expect(res.body.pending).toBe(true);
+    expect(res.body.action.ok).toBe(true);
+    expect(postMock).toHaveBeenCalledWith("spacemolt", "jump", { id: "sys2" }, "s1");
   });
 
   it("refuses approval-gated actions", async () => {
