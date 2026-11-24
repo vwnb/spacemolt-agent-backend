@@ -549,6 +549,10 @@ export const ACTION_SPECS: Record<string, ActionSpec> = {
   "spacemolt_social/get_notification_settings": spec(none, "none", "list notification channels and mute state"),
 };
 
+const ACTION_ALIASES: Record<string, { tool: string; action: string }> = {
+  "spacemolt/chat": { tool: "spacemolt_social", action: "chat" },
+};
+
 export const pendingActionInputSchema = z.object({
   id: text.optional(),
   tool: text.default("spacemolt"),
@@ -569,13 +573,16 @@ export function parseGameAction(raw: unknown): ParsedGameAction {
   if (!base.success) {
     return { ok: false, error: base.error.issues[0]?.message ?? "Invalid action" };
   }
-  const key = `${base.data.tool}/${base.data.action}`;
-  const actionSpec = ACTION_SPECS[key];
+  const requestedKey = `${base.data.tool}/${base.data.action}`;
+  const alias = ACTION_ALIASES[requestedKey];
+  const tool = alias?.tool ?? base.data.tool;
+  const action = alias?.action ?? base.data.action;
+  const actionSpec = ACTION_SPECS[`${tool}/${action}`];
   if (!actionSpec) {
-    return { ok: false, error: `Unknown action: ${key}` };
+    return { ok: false, error: `Unknown action: ${requestedKey}` };
   }
   if (actionSpec.argsText === "none") {
-    return { ok: true, action: { ...base.data, args: {} } };
+    return { ok: true, action: { ...base.data, tool, action, args: {} } };
   }
   const parsedArgs = actionSpec.schema.safeParse(base.data.args);
   if (!parsedArgs.success) {
@@ -583,7 +590,7 @@ export function parseGameAction(raw: unknown): ParsedGameAction {
   }
   return {
     ok: true,
-    action: { ...base.data, args: parsedArgs.data as Record<string, unknown> },
+    action: { ...base.data, tool, action, args: parsedArgs.data as Record<string, unknown> },
   };
 }
 
@@ -766,7 +773,7 @@ export const GAMEPLAY_SYSTEM_PROMPT = [
   "You can read game state and propose actions. The backend executes only the listed tools.",
   "Focus on completing active missions and the pilot's personal objective set in the UI; use mining/trade loops only when they serve that goal. After each meaningful batch, tell the pilot what changed and stop; do not loop on checks that return nothing new.",
   "Use only the exact tool, action and argument names shown. Extra fields are rejected before anything is sent to SpaceMolt. For actions whose args are listed as none, use an empty object.",
-  "The tool field defaults to spacemolt; include it explicitly for every other tool.",
+  "The tool field defaults to spacemolt; include it explicitly for every other tool. Chat always uses tool spacemolt_social, never spacemolt.",
   "Always ground decisions in server-provided game state and tool results. Never invent item, POI, system, player, shipment or recipe IDs.",
   "The backend decides which actions require approval; omit approval from your output. Write actions are returned as pending_actions for pilot approval.",
   "Chat, forum, petition, gift, trade, combat, faction, mission, passenger, crafting and shipping write actions require approval. Never claim they were executed before approval.",

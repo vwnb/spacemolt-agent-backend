@@ -32,6 +32,23 @@ describe("gameplay action registry", () => {
     expect(invalid.ok).toBe(false);
   });
 
+  it("routes chat sent with the default tool to the social tool", async () => {
+    const { parseGameAction, requiresApproval } = await import("../src/agent/gameplay.js");
+
+    const parsed = parseGameAction({
+      tool: "spacemolt",
+      action: "chat",
+      args: { target: "system", content: "Standing by." },
+    });
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.action.tool).toBe("spacemolt_social");
+      expect(parsed.action.action).toBe("chat");
+      expect(requiresApproval(parsed.action)).toBe(true);
+    }
+  });
+
   it("tells the reasoning model that args must be an object and approval is backend-owned", async () => {
     const { GAMEPLAY_SYSTEM_PROMPT } = await import("../src/agent/gameplay.js");
     expect(GAMEPLAY_SYSTEM_PROMPT).toContain("args must be a JSON object");
