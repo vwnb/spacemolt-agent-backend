@@ -1,7 +1,7 @@
 import { getConfig } from "../config/env.js";
 import { SpaceMoltClient } from "../spacemolt/client.js";
 import { accountFrom, messageFrom, type ConnectResult } from "./connect.js";
-import { observeSession } from "./observe.js";
+import { observeSession, type ObservationModelChoice } from "./observe.js";
 
 export type LoginLinkStartResult = {
   linkSessionId: string;
@@ -62,7 +62,11 @@ export async function startLoginLink(): Promise<LoginLinkStartResult> {
   };
 }
 
-export async function pollLoginLink(linkSessionId: string, deviceCode: string): Promise<LoginLinkPollResult> {
+export async function pollLoginLink(
+  linkSessionId: string,
+  deviceCode: string,
+  selection: ObservationModelChoice = {},
+): Promise<LoginLinkPollResult> {
   const cfg = getConfig();
   const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
   const response = await client.post(
@@ -86,7 +90,7 @@ export async function pollLoginLink(linkSessionId: string, deviceCode: string): 
     };
   }
 
-  const observation = await observeSession(client, linkSessionId);
+  const observation = await observeSession(client, linkSessionId, selection);
   return {
     complete: true,
     ...observation,

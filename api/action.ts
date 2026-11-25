@@ -6,7 +6,14 @@ import { getConfig } from "../src/config/env.js";
 import { corsHeaders } from "../src/http/cors.js";
 import { SpaceMoltClient } from "../src/spacemolt/client.js";
 
-const MOVEMENT_ACTIONS = new Set(["spacemolt/jump", "spacemolt/travel"]);
+const DEFERRED_ACTIONS = new Set([
+  "spacemolt/jump",
+  "spacemolt/travel",
+  "spacemolt/mine",
+  "spacemolt/survey_system",
+  "spacemolt/refuel",
+  "spacemolt/repair",
+]);
 const DEFERRED_RESPONSE_MS = 45_000;
 
 const inputSchema = z.object({
@@ -57,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
     const actionKey = `${action.action.tool}/${action.action.action}`;
-    if (MOVEMENT_ACTIONS.has(actionKey)) {
+    if (DEFERRED_ACTIONS.has(actionKey)) {
       let responded = false;
       const execution = executeGameAction(client, parsed.data.sessionId, action.action)
         .then((result: GameActionRecord) => {
@@ -85,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             action: action.action.action,
             args: action.action.args,
             ok: true,
-            result: "Movement submitted; still in progress.",
+            result: "Action submitted; still in progress.",
           };
           res.status(202).json({ ok: true, pending: true, action: pending });
           resolve();

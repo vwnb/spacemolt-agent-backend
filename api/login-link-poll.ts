@@ -8,6 +8,8 @@ import { corsHeaders } from "../src/http/cors.js";
 const inputSchema = z.object({
   linkSessionId: z.string().min(1).max(512),
   deviceCode: z.string().min(1).max(512),
+  provider: z.enum(["openrouter", "openapi", "opper"]).optional(),
+  model: z.string().trim().min(1).max(200).optional(),
 }).strict();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -34,7 +36,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    res.status(200).json(await pollLoginLink(parsed.data.linkSessionId, parsed.data.deviceCode));
+    res.status(200).json(await pollLoginLink(parsed.data.linkSessionId, parsed.data.deviceCode, {
+      provider: parsed.data.provider,
+      model: parsed.data.model,
+    }));
   } catch (err) {
     const { message, status } = connectFailureMessage(err);
     res.status(status).json({ ok: false, error: message });

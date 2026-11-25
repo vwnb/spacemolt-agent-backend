@@ -2,14 +2,14 @@ import { getConfig } from "../config/env.js";
 import { log } from "../logger.js";
 import { SpaceMoltClient } from "../spacemolt/client.js";
 import { SpaceMoltApiError } from "../spacemolt/types.js";
-import { observeSession, type ObservationResult } from "./observe.js";
+import { observeSession, type ObservationModelChoice, type ObservationResult } from "./observe.js";
 
 export type ConnectInput = {
   mode: "register";
   username: string;
   empire: "solarian" | "voidborn" | "crimson" | "nebula" | "outerrim";
   registrationCode: string;
-};
+} & ObservationModelChoice;
 
 export type ConnectAccount = {
   username?: string;
@@ -63,7 +63,10 @@ export async function connectAndObserve(input: ConnectInput): Promise<ConnectRes
   }, sessionId);
   const authContent = response.structuredContent;
 
-  const observation = await observeSession(client, sessionId);
+  const observation = await observeSession(client, sessionId, {
+    provider: input.provider,
+    model: input.model,
+  });
   return {
     ...observation,
     sessionId,

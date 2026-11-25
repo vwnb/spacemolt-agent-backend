@@ -499,8 +499,8 @@ export const ACTION_SPECS: Record<string, ActionSpec> = {
   "spacemolt_faction_commerce/create_buy_order": spec(factionOrderArg, "item_id?, quantity?, price_each?, bucket?, private?, orders?", "create a faction buy order"),
   "spacemolt_faction_commerce/create_sell_order": spec(factionOrderArg, "item_id?, quantity?, price_each?, bucket?, private?, orders?", "create a faction sell order"),
   "spacemolt_storage/view": spec(storageViewArg, "target?, station_id?", "view personal or faction storage"),
-  "spacemolt_storage/deposit": spec(storageDepositArg, "target?, source?, item_id?, quantity?, credits?, items?, bucket?, dest_bucket?, message?", "deposit items or gift resources"),
-  "spacemolt_storage/withdraw": spec(storageWithdrawArg, "target?, source?, item_id?, quantity?, items?, bucket?, dest_bucket?", "withdraw items from storage"),
+  "spacemolt_storage/deposit": spec(storageDepositArg, "target?, source?, item_id?, quantity?, credits?, items?, bucket?, dest_bucket?, message?", "deposit items from cargo into station storage, or gift resources"),
+  "spacemolt_storage/withdraw": spec(storageWithdrawArg, "target?, source?, item_id?, quantity?, items?, bucket?, dest_bucket?", "withdraw items from station storage into cargo"),
   "spacemolt_storage/loot": spec(storageLootArg, "wreck_id?, item_id?, module_id?, quantity?", "loot a wreck"),
   "spacemolt_storage/jettison": spec(storageJettisonArg, "item_id?, quantity?, items?", "dump cargo using single-item or bulk form"),
   "spacemolt_transfer/trade_offer": spec(tradeOfferArg, "target, offer_items?, offer_credits?, request_items?, request_credits?, note?, offer_safe_passage?, hold?, station_id?", "propose a player trade or toll"),
@@ -690,6 +690,7 @@ export type GameActionRecord = {
   action: string;
   args: Record<string, unknown>;
   ok: boolean;
+  pending?: boolean;
   result?: string;
   structured?: unknown;
   error?: string;
@@ -891,6 +892,7 @@ export const GAMEPLAY_SYSTEM_PROMPT = [
   "The backend decides which actions require approval; omit approval from your output. Write actions are returned as pending_actions for pilot approval.",
   "Chat, forum, petition, gift, trade, combat, faction, mission, passenger, crafting, shipping and refuel/repair transfers to other pilots require approval. Never claim they were executed before approval.",
   "To refuel or repair yourself, omit target: an empty object uses the docked station service; in space set id to a fuel cell or repair kit from cargo with optional quantity. target='fleet' is read-only fuel/hull status, not a fleet-wide action; a player target transfers fuel or kits.",
+  "To move items from station storage into cargo, use tool spacemolt_storage, action withdraw with args.item_id and args.quantity, or args.items for bulk transfers; there is no separate transfer-to-cargo action. To move cargo into station storage, use tool spacemolt_storage, action deposit.",
   "For text actions, put the exact draft in args.content (or args.title/description where applicable). The UI shows an editable text box; after approval, send the pilot's edited text unchanged.",
   "Set done=true when no more actions are needed this turn. Safe actions execute immediately; proposals appear in pending_actions.",
   "To find a named place or system, use search_systems with args.text, then use get_map with args.system_id or find_route with args.id only on IDs the tools returned. get_map is for map context; it does not search by name.",

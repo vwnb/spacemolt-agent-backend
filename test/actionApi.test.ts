@@ -80,6 +80,26 @@ describe("POST /api/action", () => {
     expect(postMock).toHaveBeenCalledWith("spacemolt", "jump", { id: "sys2" }, "s1");
   });
 
+  it("returns pending instead of blocking on a long mining action", async () => {
+    vi.useFakeTimers();
+    postMock.mockImplementation(() => new Promise(() => {}));
+    const handler = (await import("../api/action.js")).default;
+    const req: any = {
+      method: "POST",
+      headers: {},
+      body: { sessionId: "s1", tool: "spacemolt", action: "mine", args: {} },
+    };
+    const res = makeRes();
+
+    const pending = handler(req, res);
+    await vi.advanceTimersByTimeAsync(45_000);
+    await pending;
+
+    expect(res.statusCode).toBe(202);
+    expect(res.body.pending).toBe(true);
+    expect(postMock).toHaveBeenCalledWith("spacemolt", "mine", {}, "s1");
+  });
+
   it("refuses approval-gated actions", async () => {
     const handler = (await import("../api/action.js")).default;
     const req: any = {

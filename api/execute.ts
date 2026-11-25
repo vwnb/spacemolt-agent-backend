@@ -5,6 +5,8 @@ import { getConfig } from "../src/config/env.js";
 import { corsHeaders } from "../src/http/cors.js";
 import { SpaceMoltClient } from "../src/spacemolt/client.js";
 
+const DEFERRED_RESPONSE_MS = 45_000;
+
 const approvedActionInputSchema = pendingActionInputSchema.extend({
   approval: z.literal(true).optional(),
 });
@@ -38,17 +40,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
-  const actions = await executeApprovedActions(client, parsed.data.sessionId, parsed.data.actions.map((action) => ({
+  const approvedActions = parsed.data.actions.map((action) => ({
     id: action.id,
     tool: action.tool,
     action: action.action,
     args: action.args,
     reason: action.reason,
-  })));
-  const failed = actions.filter((action) => !action.ok);
-  res.status(200).json({
-    ok: failed.length === 0,
-    actions,
-    error: failed.length > 0 ? `${failed.length} action(s) failed. See action results.` : undefined,
+  }));
+  let responded = false;
+  const execution = executeApprovedActions(client, parsed.data.sessionId, approvedActions)
+    .then((actions) => {
+      if (responded) return;
+      responded = true;
+      const failed = actions.filter((action) => !action.ok);
+      res.status(200).json({
+        ok: failed.length === 0,
+        actions,
+        error: failed.length > 0 ? `${failed.length} action(s) failed. See action results.` : undefined,
+      });
+    })
+    .catch((err: unknown) => {
+      if (responded) return;
+      responded = true;
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ ok: false, error: message });
+    });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deferred = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      if (responded) {
+        resolve();
+        return;
+      }
+      responded = true;
+      const actions = approvedActions.map((action) => ({
+        tool: action.tool,
+        action: action.action,
+        args: action.args,
+        ok: true,
+        pending: true,
+        result: "Action submitted; still in progress.",
+      }));
+      res.status(202).json({ ok: true, pending: true, actions });
+      resolve();
+    }, DEFERRED_RESPONSE_MS);
   });
+
+  await Promise.race([execution, deferred]);
+  if (timer !== undefined) clearTimeout(timer);
 }

@@ -8,6 +8,8 @@ const inputSchema = z.object({
   username: z.string().trim().min(3).max(24),
   empire: z.enum(["solarian", "voidborn", "crimson", "nebula", "outerrim"]),
   registrationCode: z.string().trim().min(1),
+  provider: z.enum(["openrouter", "openapi", "opper"]).optional(),
+  model: z.string().trim().min(1).max(200).optional(),
 }).strict();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const createSessionMock = vi.fn();
 const postMock = vi.fn();
 const proposeMock = vi.fn();
+const reasoningOptsMock = vi.fn();
 
 vi.mock("../src/spacemolt/client.js", () => ({
   SpaceMoltClient: class {
@@ -14,7 +15,9 @@ vi.mock("../src/spacemolt/client.js", () => ({
 vi.mock("../src/reasoning/openaiCompatible.js", () => ({
   OpenAICompatibleReasoningClient: class {
     propose = proposeMock;
-    constructor(_opts: any) {}
+    constructor(opts: any) {
+      reasoningOptsMock(opts);
+    }
   },
 }));
 
@@ -27,6 +30,7 @@ describe("connectAndObserve", () => {
     createSessionMock.mockReset();
     postMock.mockReset();
     proposeMock.mockReset();
+    reasoningOptsMock.mockReset();
     createSessionMock.mockResolvedValue({ session: { id: "s1" } });
     proposeMock.mockResolvedValue({
       summary: "Observe only",
@@ -76,5 +80,24 @@ describe("connectAndObserve", () => {
       "get_status",
       "get_notifications",
     ]);
+  });
+
+  it("uses the requested provider and model for the auth proposal", async () => {
+    postMock
+      .mockResolvedValueOnce({ structuredContent: { username: "new_pilot", player_id: "p1" } })
+      .mockResolvedValueOnce({ structuredContent: { credits: 1 }, result: "ok" })
+      .mockResolvedValueOnce({ structuredContent: [], result: "n" });
+
+    const { connectAndObserve } = await import("../src/agent/connect.js");
+    await connectAndObserve({
+      mode: "register",
+      username: "new_pilot",
+      empire: "solarian",
+      registrationCode: "code-123",
+      provider: "openrouter",
+      model: "saved:free",
+    });
+
+    expect(reasoningOptsMock).toHaveBeenCalledWith(expect.objectContaining({ model: "saved:free" }));
   });
 });

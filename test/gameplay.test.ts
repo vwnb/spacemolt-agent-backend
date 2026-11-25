@@ -73,6 +73,20 @@ describe("gameplay action registry", () => {
     expect(GAMEPLAY_SYSTEM_PROMPT).toContain("refuel/repair transfers to other pilots require approval");
   });
 
+  it("documents station-to-cargo transfers as storage withdraw", async () => {
+    const { ACTION_SPECS, parseGameAction, GAMEPLAY_SYSTEM_PROMPT } = await import("../src/agent/gameplay.js");
+
+    const withdraw = parseGameAction({
+      tool: "spacemolt_storage",
+      action: "withdraw",
+      args: { item_id: "iron_ore", quantity: 10 },
+    });
+    expect(withdraw.ok).toBe(true);
+    expect(ACTION_SPECS["spacemolt_storage/withdraw"].use).toContain("station storage into cargo");
+    expect(ACTION_SPECS["spacemolt_storage/deposit"].use).toContain("cargo into station storage");
+    expect(GAMEPLAY_SYSTEM_PROMPT).toContain("there is no separate transfer-to-cargo action");
+  });
+
   it("routes chat sent with the default tool to the social tool", async () => {
     const { parseGameAction, requiresApproval } = await import("../src/agent/gameplay.js");
 

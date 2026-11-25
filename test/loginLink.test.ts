@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const createSessionMock = vi.fn();
 const postMock = vi.fn();
 const proposeMock = vi.fn();
+const reasoningOptsMock = vi.fn();
 
 vi.mock("../src/spacemolt/client.js", () => ({
   SpaceMoltClient: class {
@@ -14,7 +15,9 @@ vi.mock("../src/spacemolt/client.js", () => ({
 vi.mock("../src/reasoning/openaiCompatible.js", () => ({
   OpenAICompatibleReasoningClient: class {
     propose = proposeMock;
-    constructor(_opts: any) {}
+    constructor(opts: any) {
+      reasoningOptsMock(opts);
+    }
   },
 }));
 
@@ -27,6 +30,7 @@ describe("loginLink", () => {
     createSessionMock.mockReset();
     postMock.mockReset();
     proposeMock.mockReset();
+    reasoningOptsMock.mockReset();
     proposeMock.mockResolvedValue({
       summary: "Observe only",
       should_act: false,
@@ -82,7 +86,10 @@ describe("loginLink", () => {
       .mockResolvedValueOnce({ structuredContent: [{ type: "chat" }], result: "n" });
 
     const { pollLoginLink } = await import("../src/agent/loginLink.js");
-    const result = await pollLoginLink("link-session", "device-1");
+    const result = await pollLoginLink("link-session", "device-1", {
+      provider: "openrouter",
+      model: "saved:free",
+    });
 
     expect(result.complete).toBe(true);
     if (!result.complete) return;
@@ -96,5 +103,6 @@ describe("loginLink", () => {
       "get_notifications",
     ]);
     expect(createSessionMock).not.toHaveBeenCalled();
+    expect(reasoningOptsMock).toHaveBeenCalledWith(expect.objectContaining({ model: "saved:free" }));
   });
 });

@@ -1,5 +1,6 @@
-import { getConfig } from "../config/env.js";
+import { getConfig, resolveProviderRuntime } from "../config/env.js";
 import { log } from "../logger.js";
+import { isAllowedModel, type LLMProviderKey } from "../reasoning/models.js";
 import { OpenAICompatibleReasoningClient } from "../reasoning/openaiCompatible.js";
 import type { Proposal } from "../reasoning/types.js";
 import { SpaceMoltClient } from "../spacemolt/client.js";
@@ -34,14 +35,25 @@ function failedObservation(): ObservationResult {
   };
 }
 
-export async function observeSession(client: SpaceMoltClient, sessionId: string): Promise<ObservationResult> {
+export type ObservationModelChoice = { provider?: LLMProviderKey; model?: string };
+
+export async function observeSession(
+  client: SpaceMoltClient,
+  sessionId: string,
+  selection: ObservationModelChoice = {},
+): Promise<ObservationResult> {
   const cfg = getConfig();
+  const providerKey = selection.provider ?? cfg.llmProvider;
+  const runtime = resolveProviderRuntime(cfg, providerKey);
+  const model = selection.model && await isAllowedModel(providerKey, runtime.model, selection.model)
+    ? selection.model
+    : runtime.model;
   const reasoning = new OpenAICompatibleReasoningClient({
-    baseUrl: cfg.llmBaseUrl,
-    apiKey: cfg.llmApiKey,
-    model: cfg.llmModel,
-    timeoutMs: cfg.LLM_TIMEOUT_MS,
-    extraHeaders: cfg.llmExtraHeaders,
+    baseUrl: runtime.baseUrl,
+    apiKey: runtime.apiKey,
+    model,
+    timeoutMs: runtime.timeoutMs,
+    extraHeaders: runtime.extraHeaders,
   });
 
   let observation;
@@ -74,7 +86,10 @@ export async function observeSession(client: SpaceMoltClient, sessionId: string)
   };
 }
 
-export async function observeWithToken(token: string): Promise<ObservationResult> {
+export async function observeWithToken(
+  token: string,
+  selection: ObservationModelChoice = {},
+): Promise<ObservationResult> {
   const cfg = getConfig();
   const client = new SpaceMoltClient(cfg.SPACEMOLT_BASE_URL);
 
@@ -84,7 +99,7 @@ export async function observeWithToken(token: string): Promise<ObservationResult
     if (!sessionId) throw new Error("SpaceMolt did not return a session id");
 
     await client.post("spacemolt_auth", "login_token", { token }, sessionId);
-    return await observeSession(client, sessionId);
+    return await observeSession(client, sessionId, selection);
   } catch (err) {
     if (err instanceof SpaceMoltApiError && (err.code === "auth_failed" || err.code === "not_authenticated")) {
       throw new InvalidTokenError();
